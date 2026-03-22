@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MC-ULTIMATE POS DUAL-CONTROL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --mc-green: #00ff41;
+            --mc-bg: #0d0d0d;
+            --mc-panel: #1a1a1a;
+        }
+
+        body {
+            background-color: var(--mc-bg);
+            color: var(--mc-green);
+            font-family: 'JetBrains+Mono', 'DotGothic16', monospace;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #itemGridContainer {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 260px;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+
+        .item-card {
+            background: var(--mc-panel);
+            border: 1px solid #333;
+            position: relative;
+            transition: all 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .item-card:active {
+            border-color: var(--mc-green);
+        }
+
+        .item-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4100;
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 99px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        .tab-btn {
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab-btn.active {
+            border-color: var(--mc-green);
+            color: white;
+            background: rgba(0, 255, 65, 0.1);
+        }
+
+        .cart-item {
+            border-left: 3px solid var(--mc-green);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .bottom-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-blur: 15px;
+            border-top: 2px solid rgba(0, 255, 65, 0.4);
+            z-index: 100;
+        }
+
+        .receipt-preview {
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .control-btn {
+            transition: transform 0.1s;
+        }
+        .control-btn:active {
+            transform: scale(0.9);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="p-4 border-b border-white/10 flex justify-between items-center bg-black">
+        <h1 class="text-xl font-bold tracking-widest text-white">MC-POS <span class="text-green-500 text-xs">DUAL</span></h1>
+        <div id="clock" class="text-xs font-mono opacity-70">00:00:00</div>
+    </header>
+
+    <!-- Search & Tabs -->
+    <div class="search-section p-2 space-y-2 bg-black/60 border-b border-white/5">
+        <input type="text" id="searchInput" oninput="handleSearch()" placeholder="アイテム名を検索..." 
+               class="w-full bg-white/5 border border-white/10 p-3 rounded-lg text-sm focus:border-green-500 outline-none text-green-400">
+        
+        <div id="tabs" class="flex gap-2 overflow-x-auto no-scrollbar py-1">
+            <!-- Tabs JS -->
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div id="itemGridContainer">
+        <main id="itemGrid" class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <!-- Items JS -->
+        </main>
+    </div>
+
+    <!-- Bottom Control Panel -->
+    <div class="bottom-panel p-4 shadow-2xl">
+        <div id="cartDrawer" class="hidden mb-4 receipt-preview space-y-2 no-scrollbar border-b border-white/10 pb-3">
+            <!-- Cart Items -->
+        </div>
+
+        <div class="flex justify-between items-end mb-4">
+            <div onclick="toggleCart()" class="cursor-pointer active:opacity-70 transition-opacity">
+                <div class="text-[10px] uppercase opacity-50 flex items-center gap-1">
+                    合計点数 <span id="cartCount" class="bg-green-500 text-black px-2 rounded ml-1 font-bold font-mono text-xs">0</span>
+                </div>
+                <div id="displayTotal" class="text-4xl font-bold text-white tracking-tighter">0<span class="text-sm ml-1 text-green-500">円</span></div>
+            </div>
+            <div class="text-right">
+                <div id="displayStack" class="text-xs text-green-400 font-mono font-bold">0枚 (0s + 0)</div>
+                <div id="displayShulker" class="text-[10px] text-yellow-500 font-bold hidden">0.00 Boxes</div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button id="copyBtn" onclick="copyReceipt()" class="flex-1 h-14 bg-green-500 text-black font-black rounded-xl uppercase tracking-widest active:scale-95 transition-all text-sm">
+                レシートをコピー
+            </button>
+            <button onclick="clearCart()" class="w-14 h-14 border border-red-900 text-red-500 rounded-xl flex items-center justify-center active:bg-red-900/30 font-bold">
+                CLR
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const ALL_ITEMS = [
+            { n: "石", p: 1, c: "建築" }, { n: "丸石", p: 1, c: "建築" }, { n: "滑らかな石", p: 2, c: "建築" },
+            { n: "石レンガ", p: 2, c: "建築" }, { n: "深層岩", p: 1, c: "建築" }, { n: "深層岩のタイル", p: 2, c: "建築" },
+            { n: "土", p: 1, c: "建築" }, { n: "草ブロック", p: 5, c: "建築" }, { n: "砂", p: 2, c: "建築" },
+            { n: "ガラス", p: 2, c: "建築" }, { n: "氷塊", p: 10, c: "建築" }, { n: "青氷", p: 40, c: "建築" },
+            { n: "クォーツブロック", p: 15, c: "建築" }, { n: "テラコッタ", p: 4, c: "建築" },
+            { n: "オークの原木", p: 2, c: "木材" }, { n: "トウヒの原木", p: 2, c: "木材" }, { n: "シラカバの原木", p: 2, c: "木材" },
+            { n: "ジャングルの原木", p: 2, c: "木材" }, { n: "桜の原木", p: 2, c: "木材" },
+            { n: "トウヒのトラップドア", p: 3, c: "装飾" }, { n: "チェスト", p: 4, c: "装飾" },
+            { n: "エンダーチェスト", p: 200, c: "装飾" }, { n: "ランタン", p: 12, c: "装飾" },
+            { n: "松明", p: 1, c: "装飾" }, { n: "本棚", p: 15, c: "装飾" }, { n: "シーランタン", p: 25, c: "装飾" },
+            { n: "RSダスト", p: 2, c: "RS" }, { n: "リピーター", p: 10, c: "RS" }, { n: "コンパレーター", p: 15, c: "RS" },
+            { n: "粘着ピストン", p: 35, c: "RS" }, { n: "オブザーバー", p: 40, c: "RS" }, { n: "ホッパー", p: 60, c: "RS" },
+            { n: "TNT", p: 50, c: "RS" },
+            { n: "ダイヤのツルハシ", p: 300, c: "ツール" }, { n: "ダイヤの剣", p: 200, c: "ツール" },
+            { n: "エリトラ", p: 3000, c: "ツール" }, { n: "ロケット花火", p: 5, c: "ツール" },
+            { n: "不死のトーテム", p: 800, c: "ツール" },
+            { n: "パン", p: 3, c: "食料" }, { n: "ステーキ", p: 8, c: "食料" }, { n: "金の人参", p: 25, c: "食料" },
+            { n: "黄金のリンゴ", p: 150, c: "食料" },
+            { n: "ダイヤモンド", p: 100, c: "貴重品" }, { n: "鉄インゴット", p: 10, c: "貴重品" },
+            { n: "金インゴット", p: 15, c: "貴重品" }, { n: "エメラルド", p: 20, c: "貴重品" },
+            { n: "ネザースター", p: 1728, c: "貴重品" }, { n: "シュルカーの殻", p: 150, c: "貴重品" }
+        ];
+
+        let cart = {}; 
+        const CATEGORIES = ["すべて", "建築", "木材", "装飾", "RS", "ツール", "食料", "貴重品"];
+        let currentCategory = "すべて";
+        const STACK = 64;
+        const SHULKER = 1728;
+
+        window.onload = () => {
+            renderTabs();
+            renderItems(ALL_ITEMS);
+            setInterval(updateClock, 1000);
+            updateClock();
+        };
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString('ja-JP', {hour12: false});
+        }
+
+        function renderTabs() {
+            const tabsContainer = document.getElementById('tabs');
+            tabsContainer.innerHTML = CATEGORIES.map(cat => `
+                <button onclick="selectCategory('${cat}')" class="tab-btn px-4 py-2 text-xs font-bold ${currentCategory === cat ? 'active' : 'opacity-50'}">
+                    ${cat}
+                </button>
+            `).join('');
+        }
+
+        function selectCategory(cat) {
+            currentCategory = cat;
+            renderTabs();
+            handleSearch();
+            document.getElementById('itemGridContainer').scrollTop = 0;
+        }
+
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            let filtered = ALL_ITEMS;
+            if (currentCategory !== "すべて") filtered = filtered.filter(i => i.c === currentCategory);
+            if (query) filtered = filtered.filter(i => i.n.toLowerCase().includes(query));
+            renderItems(filtered);
+        }
+
+        function renderItems(items) {
+            const grid = document.getElementById('itemGrid');
+            grid.innerHTML = items.map(item => {
+                const count = cart[item.n] ? cart[item.n].qty : 0;
+                const badge = count > 0 ? `<div class="item-badge">${count}</div>` : "";
+                
+                return `
+                    <div class="item-card p-3 rounded-xl flex flex-col justify-between h-36">
+                        ${badge}
+                        <div>
+                            <div class="text-[7px] opacity-40 uppercase tracking-widest mb-1">${item.c}</div>
+                            <div class="text-[13px] font-bold text-white leading-tight line-clamp-2">${item.n}</div>
+                            <div class="text-green-400 text-[10px] font-bold font-mono mt-1">${item.p}円</div>
+                        </div>
+                        <div class="flex gap-2 border-t border-white/5 pt-2">
+                            <button onclick="changeQty('${item.n}', -1, ${item.p})" 
+                                    class="control-btn flex-1 h-8 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-white font-black text-lg ${count === 0 ? 'opacity-20' : 'opacity-100'}">
+                                -
+                            </button>
+                            <button onclick="changeQty('${item.n}', 1, ${item.p})" 
+                                    class="control-btn flex-1 h-8 bg-green-500 rounded-lg flex items-center justify-center text-black font-black text-lg">
+                                +
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function changeQty(name, delta, price) {
+            if (cart[name]) {
+                cart[name].qty += delta;
+                if (cart[name].qty <= 0) delete cart[name];
+            } else if (delta > 0) {
+                cart[name] = { price, qty: 1 };
+            }
+            updateUI();
+            handleSearch();
+        }
+
+        function toggleCart() {
+            const drawer = document.getElementById('cartDrawer');
+            drawer.classList.toggle('hidden');
+        }
+
+        function updateUI() {
+            const drawer = document.getElementById('cartDrawer');
+            drawer.innerHTML = "";
+            let subtotal = 0;
+            let totalItemCount = 0;
+
+            Object.keys(cart).sort().forEach(name => {
+                const item = cart[name];
+                const total = item.price * item.qty;
+                subtotal += total;
+                totalItemCount += item.qty;
+
+                const s = Math.floor(item.qty / STACK);
+                const r = item.qty % STACK;
+                const stackText = s > 0 ? `${s}s + ${r}` : `${item.qty}`;
+
+                const div = document.createElement('div');
+                div.className = "cart-item p-3 rounded-lg flex justify-between items-center text-xs mb-1";
+                div.innerHTML = `
+                    <div class="flex-1 truncate pr-2">
+                        <div class="text-white font-bold">${name}</div>
+                        <div class="text-[10px] text-green-500 font-mono mt-0.5">${item.qty}点 (${stackText})</div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="text-green-400 font-bold font-mono">${total.toLocaleString()}円</span>
+                        <div class="flex gap-1">
+                            <button onclick="changeQty('${name}', -1, ${item.price}); event.stopPropagation();" class="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center font-bold text-white text-lg">-</button>
+                            <button onclick="changeQty('${name}', 1, ${item.price}); event.stopPropagation();" class="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center font-bold text-white text-lg">+</button>
+                        </div>
+                    </div>
+                `;
+                drawer.appendChild(div);
+            });
+
+            document.getElementById('cartCount').innerText = totalItemCount;
+            const tax = Math.ceil(subtotal * 0.1);
+            const grandTotal = subtotal + tax;
+
+            document.getElementById('displayTotal').innerHTML = `${grandTotal.toLocaleString()}<span class="text-sm ml-1 text-green-500">円</span>`;
+            
+            const ts = Math.floor(grandTotal / STACK);
+            const tr = grandTotal % STACK;
+            document.getElementById('displayStack').innerText = `${grandTotal}枚 (${ts}s + ${tr})`;
+
+            const shDisplay = document.getElementById('displayShulker');
+            if (grandTotal >= SHULKER) {
+                shDisplay.classList.remove('hidden');
+                shDisplay.innerText = `${(grandTotal / SHULKER).toFixed(2)} Boxes`;
+            } else {
+                shDisplay.classList.add('hidden');
+            }
+        }
+
+        function clearCart() {
+            cart = {};
+            updateUI();
+            handleSearch();
+        }
+
+        function copyReceipt() {
+            const keys = Object.keys(cart);
+            if (keys.length === 0) return;
+
+            let subtotal = 0;
+            let text = "### **領収書 / MC-RECEIPT**\n\n";
+
+            keys.sort().forEach(name => {
+                const item = cart[name];
+                const total = item.price * item.qty;
+                subtotal += total;
+                
+                const s = Math.floor(item.qty / STACK);
+                const r = item.qty % STACK;
+                const qText = s > 0 ? `${s}スタック + ${r}個` : `${item.qty}点`;
+                
+                text += `* **${name}** (×${item.qty}点 / ${qText}) …… **${total.toLocaleString()}円**\n`;
+            });
+
+            const tax = Math.ceil(subtotal * 0.1);
+            const grandTotal = subtotal + tax;
+            const ts = Math.floor(grandTotal / STACK);
+            const tr = grandTotal % STACK;
+
+            text += "\n-------------------------------\n";
+            text += `**総合計： ${grandTotal.toLocaleString()}円**\n`;
+            text += `（内訳： **${ts}スタック ＋ ${tr}枚**）\n`;
+            text += `（消費税 10% 込）`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('copyBtn');
+                btn.innerText = "COPIED!";
+                btn.classList.replace('bg-green-500', 'bg-blue-500');
+                setTimeout(() => {
+                    btn.innerText = "レシートをコピー";
+                    btn.classList.replace('bg-blue-500', 'bg-green-500');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
